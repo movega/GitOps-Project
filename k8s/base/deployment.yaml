@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops-project
+  labels:
+    app: gitops-project
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitops-project
+  template:
+    metadata:
+      labels:
+        app: gitops-project
+    spec:
+      containers:
+      - name: gitops-project
+        image: gitops-project:latest
+        ports:
+        - containerPort: 80
