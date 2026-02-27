@@ -1,0 +1,13 @@
+{
+    "remote.portsAttributes": {
+        "8081": {
+            "label": "ArgoCD",
+            "onAutoForward": "notify"
+        },
+        "8080": {
+            "label": "Web App Dev",
+            "onAutoForward": "notify"
+        }
+    },
+    "remote.restoreForwardedPorts": true
+}
