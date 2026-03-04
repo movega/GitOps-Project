@@ -1,31 +1,38 @@
 #!/bin/bash
 
-REPO_URL="https://github.com/movega/GitOps-Project" # 👈 PON AQUÍ TU URL DE GITHUB
+REPO_URL="https://github.com/movega/GitOps-Project"
 
 echo "🚀 Starting GitOps Environment..."
 
-# 1. Clúster y carga de imagen
-if ! kind get clusters | grep -q "gitops-cluster"; then
+# 1. Gestión del Clúster (Docker Start vs Kind Create)
+if [ "$(docker ps -a -f name=gitops-cluster-control-plane --format '{{.Status}}' | grep Exited)" ]; then
+    echo "🟢 Resuming existing cluster nodes..."
+    docker start gitops-cluster-control-plane
+    # Esperamos a que el API Server responda antes de seguir
+    until kubectl cluster-info > /dev/null 2>&1; do echo "⏳ Waiting for API Server..."; sleep 2; done
+elif ! kind get clusters | grep -q "gitops-cluster"; then
+    echo "🏗️ Cluster not found. Creating kind-cluster..."
     kind create cluster --name gitops-cluster
+else
+    echo "✅ Cluster is already running."
 fi
+
+# 2. Cargar imagen (siempre es bueno asegurar que está la última)
+echo "📦 Loading Docker image into Kind..."
 kind load docker-image gitops-project:latest --name gitops-cluster
 
-# 2. Namespaces
+# 3. Aplicar configuraciones (Idempotente: si ya existe, no hace nada)
+echo "📂 Ensuring Namespaces and ArgoCD..."
 for ns in argocd dev test prod; do
     kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# 3. Instalación de ArgoCD y esperar a que esté listo
-echo "📥 Installing ArgoCD..."
 kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-echo "⏳ Waiting for ArgoCD Server (may take 1 minute)..."
-kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
 
-# 4. CREACIÓN AUTOMÁTICA DE APPS (La magia de GitOps)
-echo "🤖 Auto-creating ArgoCD Applications..."
+# 4. Apps y Contraseña (Solo se muestran los datos)
+echo "🤖 Syncing ArgoCD Applications..."
 envs=("dev" "test" "prod")
 for env in "${envs[@]}"; do
-    # Usamos kubectl para crear el objeto de ArgoCD directamente sin entrar en la web
     cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -48,16 +55,17 @@ spec:
 EOF
 done
 
-# 5. Contraseña y Túneles
 ARGOPASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 echo "---------------------------------------------------"
 echo "  USER: admin | PASSWORD: $ARGOPASS"
 echo "---------------------------------------------------"
 
+# 5. Túneles (Esto sí hay que hacerlo siempre al empezar)
+echo "🌉 Opening Port-Forwarding tunnels..."
 pkill -f "port-forward"
 kubectl port-forward svc/argocd-server -n argocd 8081:443 > /dev/null 2>&1 &
-# Esperamos un poco a que las apps sincronicen antes de abrir el túnel de la web
-sleep 10
+# Un pequeño sleep para asegurar que el service de la app existe antes de tunelar
+sleep 5
 kubectl port-forward svc/gitops-project -n dev 8080:80 > /dev/null 2>&1 &
 
-echo "✨ System fully restored and Apps re-created!"
+echo "✨ Everything is ready!"
