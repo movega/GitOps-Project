@@ -5,7 +5,7 @@ metadata:
   labels:
     app: gitops-project
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: gitops-project
@@ -15,15 +15,15 @@ spec:
         app: gitops-project
     spec:
       containers:
-      - name: web-container
-        image: alvarovm95493/gitops-project:latest
+      - name: gitops-project
+        image: gitops-project # Kustomize reemplazará esto
         imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "500m"
+            requests:
+                memory: "64Mi"
+                cpu: "50m"
+            limits:
+                memory: "128Mi"
+                cpu: "200m"

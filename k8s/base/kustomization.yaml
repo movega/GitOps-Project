@@ -3,3 +3,9 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
+
+images:
+  - name: gitops-project
+    newName: alvarovm95493/gitops-project
+    # En desarrollo local, esto permite sobrescribir fácilmente.
+    # ArgoCD detectará cambios si actualizas el tag aquí o en los overlays.
