@@ -1,39 +1,43 @@
 #!/bin/bash
 
+# --- CONFIGURACIÓN DEL ESTUDIANTE ---
 REPO_URL="https://github.com/movega/GitOps-Project"
+DOCKER_USER="alvarovm95493"
+# ------------------------------------
 
-echo "🚀 Starting GitOps Environment (Kustomize Version)..."
+echo "🚀 Iniciando Entorno GitOps (Fase CI/CD)..."
 
-# 1. Gestión del Clúster (Docker Start vs Kind Create)
+# 1. Gestión del Clúster (Reanudar o Crear)
 if [ "$(docker ps -a -f name=gitops-cluster-control-plane --format '{{.Status}}' | grep Exited)" ]; then
-    echo "🟢 Resuming existing cluster nodes..."
+    echo "🟢 Reanudando nodos del clúster existente..."
     docker start gitops-cluster-control-plane
-    until kubectl cluster-info > /dev/null 2>&1; do echo "⏳ Waiting for API Server..."; sleep 2; done
+    until kubectl cluster-info > /dev/null 2>&1; do echo "⏳ Esperando al API Server..."; sleep 2; done
 elif ! kind get clusters | grep -q "gitops-cluster"; then
-    echo "🏗️ Cluster not found. Creating kind-cluster..."
+    echo "🏗️ Clúster no encontrado. Creando gitops-cluster..."
     kind create cluster --name gitops-cluster
 else
-    echo "✅ Cluster is already running."
+    echo "✅ El clúster ya está en ejecución."
 fi
 
-# 2. Cargar imagen
-echo "📦 Loading Docker image into Kind..."
-kind load docker-image gitops-project:latest --name gitops-cluster
+# 2. Nota sobre la imagen
+# Ya no usamos 'kind load' porque la imagen bajará de Docker Hub gracias a GitHub Actions.
+echo "ℹ️  La imagen se descargará automáticamente desde $DOCKER_USER/gitops-project"
 
-# 3. Namespaces y ArgoCD
-echo "📂 Ensuring Namespaces and ArgoCD..."
+# 3. Namespaces
+echo "📂 Asegurando Namespaces..."
 for ns in argocd dev test prod; do
     kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f -
 done
 
+# 4. Instalación de ArgoCD
+echo "📥 Instalando/Actualizando ArgoCD..."
 kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-# Esperar a que el servidor de ArgoCD esté listo antes de configurar las Apps
-echo "⏳ Waiting for ArgoCD server to be ready..."
+echo "⏳ Esperando a que ArgoCD Server esté listo..."
 kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
 
-# 4. Sincronización de Apps apuntando a OVERLAYS
-echo "🤖 Syncing ArgoCD Applications to Kustomize Overlays..."
+# 5. Configuración de Aplicaciones (Kustomize Overlays)
+echo "🤖 Sincronizando Aplicaciones de ArgoCD..."
 envs=("dev" "test" "prod")
 for env in "${envs[@]}"; do
     cat <<EOF | kubectl apply -f -
@@ -58,20 +62,21 @@ spec:
 EOF
 done
 
-# 5. Credenciales
+# 6. Obtención de Credenciales
 ARGOPASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 echo "---------------------------------------------------"
-echo "  USER: admin | PASSWORD: $ARGOPASS"
+echo "  URL: https://localhost:8081"
+echo "  USER: admin"
+echo "  PASS: $ARGOPASS"
 echo "---------------------------------------------------"
 
-# 6. Túneles
-echo "🌉 Opening Port-Forwarding tunnels..."
+# 7. Túneles de Red (Port-Forwarding)
+echo "🌉 Abriendo túneles de red..."
 pkill -f "port-forward"
+# Túnel ArgoCD
 kubectl port-forward svc/argocd-server -n argocd 8081:443 > /dev/null 2>&1 &
-
-# Pequeña espera para que las apps se sincronicen y el service de la web aparezca
-echo "⏳ Finalizing network tunnels..."
-sleep 10
+# Túnel App (Entorno Dev)
+sleep 5
 kubectl port-forward svc/gitops-project -n dev 8080:80 > /dev/null 2>&1 &
 
-echo "✨ Everything is ready! Check ArgoCD: https://localhost:8081"
+echo "✨ ¡Todo listo! Mantén esta terminal abierta."
