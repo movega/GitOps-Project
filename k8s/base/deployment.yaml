@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: web-container
-        image: gitops-project:latest
-        imagePullPolicy: IfNotPresent
+        image: alvarovm95493/gitops-project:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
