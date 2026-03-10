@@ -28,11 +28,11 @@ done
 
 # 3. Instalar ArgoCD
 echo "📥 Instalando/Actualizando ArgoCD..."
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # 4. PARCHE CRÍTICO: Reducir recursos para Kind/WSL2
-echo "🩹 Aplicando parche de recursos a ArgoCD..."
-kubectl apply -f k8s/argocd-dev-patch.yaml
+kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources", "value": {"limits": {"cpu": "250m", "memory": "256Mi"}, "requests": {"cpu": "50m", "memory": "64Mi"}}}]'
+kubectl patch deployment argocd-server -n argocd --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources", "value": {"limits": {"cpu": "250m", "memory": "256Mi"}, "requests": {"cpu": "50m", "memory": "64Mi"}}}]'
 
 # 5. Esperar a ArgoCD (con reinicio si es necesario)
 echo "⏳ Esperando componentes de ArgoCD..."
