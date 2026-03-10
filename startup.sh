@@ -47,6 +47,12 @@ kubectl wait --for=condition=available --timeout=300s deployment/argocd-repo-ser
 echo "🤖 Configurando Apps en ArgoCD..."
 envs=("dev" "test" "prod")
 for env in "${envs[@]}"; do
+    if [ "$env" == "dev" ]; then
+        TARGET_REVISION="dev"
+    else
+        TARGET_REVISION="main"
+    fi
+
     cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -57,7 +63,7 @@ spec:
   project: default
   source:
     repoURL: $REPO_URL
-    targetRevision: HEAD
+    targetRevision: $TARGET_REVISION
     path: k8s/overlays/$env
   destination:
     server: https://kubernetes.default.svc

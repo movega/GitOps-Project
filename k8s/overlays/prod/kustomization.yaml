@@ -11,3 +11,8 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 3
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: APP_ENV
+            value: "ENTORNO DE PRODUCCIÓN (RAMA MAIN)"
