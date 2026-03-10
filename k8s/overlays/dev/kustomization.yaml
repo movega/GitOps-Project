@@ -3,6 +3,12 @@ kind: Kustomization
 resources:
   - ../../base
 namespace: dev
+
+images:
+  - name: gitops-project
+    newName: alvarovm95493/gitops-project
+    newTag: latest # O 'dev-latest' si configuraste así la Action
+
 patches:
   - target:
       kind: Deployment
