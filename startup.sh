@@ -39,19 +39,23 @@ echo "⏳ Esperando componentes de ArgoCD..."
 # Forzar reinicio para que tomen el parche de recursos si ya existían
 kubectl rollout restart deployment argocd-repo-server -n argocd
 kubectl rollout restart deployment argocd-server -n argocd
+kubectl rollout restart deployment argocd-redis -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 
-kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-redis -n argocd
 kubectl wait --for=condition=available --timeout=300s deployment/argocd-repo-server -n argocd
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+kubectl rollout status --timeout=300s statefulset/argocd-application-controller -n argocd
 
 # 6. Configurar Aplicaciones
 echo "🤖 Configurando Apps en ArgoCD..."
 envs=("dev" "test" "prod")
 for env in "${envs[@]}"; do
-    if [ "$env" == "dev" ]; then
-        TARGET_REVISION="dev"
-    else
-        TARGET_REVISION="main"
-    fi
+    case "$env" in
+        dev) TARGET_REVISION="dev" ;;
+        test) TARGET_REVISION="test" ;;
+        prod) TARGET_REVISION="main" ;;
+    esac
 
     cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
@@ -77,6 +81,9 @@ spec:
 EOF
 done
 
+# Dar margen a ArgoCD para comenzar la reconciliación inicial.
+sleep 30
+
 # 7. Credenciales y Acceso
 ARGOPASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 echo "---------------------------------------------------"
@@ -98,7 +105,7 @@ echo "  -> ArgoCD UI: https://localhost:8081"
 
 # Esperar a que la app dev esté lista antes de hacer port-forward
 echo "⏳ Esperando despliegue de la app (dev)..."
-kubectl wait --for=condition=available --timeout=120s deployment/gitops-project -n dev || echo "⚠️ La app aún no está lista, intentando port-forward de todos modos..."
+kubectl wait --for=condition=available --timeout=300s deployment/gitops-project -n dev || echo "⚠️ La app aún no está lista, intentando port-forward de todos modos..."
 
 nohup kubectl port-forward svc/gitops-project -n dev 8080:80 > /dev/null 2>&1 &
 echo "  -> App (Dev): http://localhost:8080"
