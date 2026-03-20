@@ -1,20 +1,63 @@
 #!/bin/bash
+set -euo pipefail
 
 # Configuración
 REPO_URL="https://github.com/movega/GitOps-Project"
 DOCKER_USER="alvarovm95493"
 CLUSTER_NAME="gitops-cluster"
+KIND_CONFIG_PATH="$(dirname "$0")/kind-config.yaml"
+INGRESS_NGINX_MANIFEST="https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml"
+ARGOCD_INGRESS_MANIFEST="$(dirname "$0")/k8s/argocd-ingress.yaml"
+ARGOCD_UI_PORT="${ARGOCD_UI_PORT:-8081}"
+DEV_APP_PORT="${DEV_APP_PORT:-8080}"
+ARGOCD_USE_PUBLIC_HOST="${ARGOCD_USE_PUBLIC_HOST:-false}"
+PORT_FORWARD_LOG_DIR="${PORT_FORWARD_LOG_DIR:-/tmp}"
 
 echo "🚀 Iniciando Entorno GitOps (Modo Reparación)..."
 
+create_kind_cluster() {
+    local attempt
+    for attempt in 1 2; do
+        if kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG_PATH"; then
+            return 0
+        fi
+        if [ "$attempt" -lt 2 ]; then
+            echo "⏳ Reintentando creación del clúster en 15s..."
+            sleep 15
+        fi
+    done
+    echo "❌ No se pudo crear el clúster Kind tras 2 intentos."
+    return 1
+}
+
+start_port_forward_with_restart() {
+    local service_name="$1"
+    local namespace="$2"
+    local local_port="$3"
+    local target_port="$4"
+    local log_file="${PORT_FORWARD_LOG_DIR}/port-forward-${service_name}-${local_port}.log"
+
+    pkill -f "kubectl port-forward.*svc/${service_name}.*${local_port}:${target_port}" || true
+    nohup bash -c "while true; do kubectl port-forward svc/${service_name} -n ${namespace} ${local_port}:${target_port} --address 127.0.0.1; sleep 2; done" >"${log_file}" 2>&1 &
+}
+
 # 1. Gestión del Clúster
 if ! kind get clusters | grep -q "^$CLUSTER_NAME$"; then
-    echo "🏗️ Creando nuevo clúster..."
-    kind create cluster --name $CLUSTER_NAME
+    echo "🏗️ Creando nuevo clúster con puertos publicados..."
+    create_kind_cluster
 else
     echo "✅ El clúster ya existe."
     # Intentar arrancar si está detenido (Docker)
     docker start "${CLUSTER_NAME}-control-plane" 2>/dev/null || true
+
+    # Verificar que el clúster tenga mapeos estables para Ingress (host 80/443)
+    MAPPED_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
+    MAPPED_HTTPS_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 443/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
+    if [ "$MAPPED_HTTP_PORT" != "80" ] || [ "$MAPPED_HTTPS_PORT" != "443" ]; then
+        echo "♻️ El clúster actual no tiene mapeo estable en 80/443. Recreando..."
+        kind delete cluster --name "$CLUSTER_NAME"
+        create_kind_cluster
+    fi
 fi
 
 echo "⏳ Esperando estabilidad del nodo..."
@@ -29,6 +72,27 @@ done
 # 3. Instalar ArgoCD
 echo "📥 Instalando/Actualizando ArgoCD..."
 kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# 3.1 Instalar Ingress NGINX para exposición estable por HTTP/HTTPS
+echo "🌐 Instalando/actualizando Ingress NGINX..."
+kubectl apply -f "$INGRESS_NGINX_MANIFEST"
+kubectl wait --namespace ingress-nginx \
+  --for=condition=Ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=300s
+
+# 3.2 Exposición estable de ArgoCD por Ingress (argocd-server interno)
+echo "🌐 Configurando publicación estable de ArgoCD..."
+kubectl patch svc argocd-server -n argocd --type merge -p='{"spec":{"type":"ClusterIP","ports":[{"name":"http","port":80,"protocol":"TCP","targetPort":8080},{"name":"https","port":443,"protocol":"TCP","targetPort":8080}]}}'
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p='{"data":{"server.insecure":"true"}}'
+kubectl apply -f "$ARGOCD_INGRESS_MANIFEST"
+
+if [ "${ARGOCD_USE_PUBLIC_HOST}" = "true" ] && [ -n "${ARGOCD_PUBLIC_HOST:-}" ]; then
+    ARGOCD_EXTERNAL_URL="http://${ARGOCD_PUBLIC_HOST}"
+else
+    ARGOCD_EXTERNAL_URL="http://127.0.0.1:${ARGOCD_UI_PORT}"
+fi
+kubectl patch configmap argocd-cm -n argocd --type merge -p "{\"data\":{\"url\":\"${ARGOCD_EXTERNAL_URL}\"}}"
 
 # 4. PARCHE CRÍTICO: Reducir recursos para Kind/WSL2
 kubectl patch deployment argocd-repo-server -n argocd --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources", "value": {"limits": {"cpu": "250m", "memory": "256Mi"}, "requests": {"cpu": "50m", "memory": "64Mi"}}}]'
@@ -84,23 +148,26 @@ echo "  ArgoCD User: admin"
 echo "  ArgoCD Pass: $ARGOPASS"
 echo "---------------------------------------------------"
 
-# 8. Port-Forwarding (Más robusto)
-echo "bridge: Estableciendo túneles..."
-pkill -f "kubectl port-forward.*8081" || true
-pkill -f "kubectl port-forward.*8080" || true
+# 8. Acceso a servicios
+echo "bridge: Configurando accesos..."
 
-# Esperar un momento para asegurar que los puertos se liberen
-sleep 2
-
-# Lanzar en segundo plano y guardar PIDs si fuera necesario (aquí simple)
-nohup kubectl port-forward svc/argocd-server -n argocd 8081:443 > /dev/null 2>&1 &
-echo "  -> ArgoCD UI: https://localhost:8081"
+# ArgoCD queda disponible por port-forward para un origen estable de sesión
+start_port_forward_with_restart "argocd-server" "argocd" "${ARGOCD_UI_PORT}" "80"
+echo "  -> ArgoCD UI (recomendado): http://127.0.0.1:${ARGOCD_UI_PORT}"
+echo "  -> ArgoCD URL configurada en argocd-cm: ${ARGOCD_EXTERNAL_URL}"
+echo "  -> Ingress local (opcional en WSL): http://localhost"
+if [ "${ARGOCD_USE_PUBLIC_HOST}" = "true" ] && [ -n "${ARGOCD_PUBLIC_HOST:-}" ]; then
+    echo "  -> Modo público activo (ARGOCD_USE_PUBLIC_HOST=true): http://${ARGOCD_PUBLIC_HOST}"
+else
+    echo "  -> Modo localhost activo (ignora ARGOCD_PUBLIC_HOST salvo que ARGOCD_USE_PUBLIC_HOST=true)"
+fi
 
 # Esperar a que la app dev esté lista antes de hacer port-forward
 echo "⏳ Esperando despliegue de la app (dev)..."
 kubectl wait --for=condition=available --timeout=120s deployment/gitops-project -n dev || echo "⚠️ La app aún no está lista, intentando port-forward de todos modos..."
 
-nohup kubectl port-forward svc/gitops-project -n dev 8080:80 > /dev/null 2>&1 &
-echo "  -> App (Dev): http://localhost:8080"
+start_port_forward_with_restart "gitops-project" "dev" "${DEV_APP_PORT}" "80"
+echo "  -> App (Dev): http://localhost:${DEV_APP_PORT}"
+echo "  -> Logs port-forward: ${PORT_FORWARD_LOG_DIR}/port-forward-argocd-server-${ARGOCD_UI_PORT}.log"
 
 echo "✨ Entorno listo."
