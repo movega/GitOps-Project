@@ -7,6 +7,6 @@ describe('cn', () => {
   })
 
   it('ignores falsy values', () => {
-    expect(cn('font-bold', undefined, false && 'hidden')).toBe('font-bold')
+    expect(cn('font-bold', undefined, false)).toBe('font-bold')
   })
 })
