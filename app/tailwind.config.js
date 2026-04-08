@@ -7,10 +7,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#1a1a1a', // Dark matte charcoal
-        surface: '#242424',
+        background: '#0f1720',
+        surface: '#192430',
         primary: '#ffffff',
-        secondary: '#a0a0a0',
+        secondary: '#9fb0c1',
+        accent: '#64d89b',
+        accentSoft: '#1f5d45',
       },
       fontFamily: {
         sans: ['Montserrat', 'sans-serif'], // Fallback for Cera CY
