@@ -50,11 +50,11 @@ else
     # Intentar arrancar si está detenido (Docker)
     docker start "${CLUSTER_NAME}-control-plane" 2>/dev/null || true
 
-    # Verificar que el clúster tenga mapeos estables para Ingress (host 80/443)
+    # Verificar que el nodo publique HTTP/HTTPS del ingress (cualquier hostPort válido)
     MAPPED_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
     MAPPED_HTTPS_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 443/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
-    if [ "$MAPPED_HTTP_PORT" != "80" ] || [ "$MAPPED_HTTPS_PORT" != "443" ]; then
-        echo "♻️ El clúster actual no tiene mapeo estable en 80/443. Recreando..."
+    if [ -z "${MAPPED_HTTP_PORT:-}" ] || [ -z "${MAPPED_HTTPS_PORT:-}" ]; then
+        echo "♻️ El clúster actual no expone puertos del ingress (80/443 en el nodo). Recreando..."
         kind delete cluster --name "$CLUSTER_NAME"
         create_kind_cluster
     fi
@@ -62,6 +62,9 @@ fi
 
 echo "⏳ Esperando estabilidad del nodo..."
 kubectl wait --for=condition=Ready node/${CLUSTER_NAME}-control-plane --timeout=60s
+
+INGRESS_HOST_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
+INGRESS_HOST_HTTP_PORT="${INGRESS_HOST_HTTP_PORT:-9080}"
 
 # 2. Namespaces
 echo "Create namespaces..."
@@ -162,7 +165,7 @@ echo "bridge: Configurando accesos..."
 start_port_forward_with_restart "argocd-server" "argocd" "${ARGOCD_UI_PORT}" "80"
 echo "  -> ArgoCD UI (recomendado): http://127.0.0.1:${ARGOCD_UI_PORT}"
 echo "  -> ArgoCD URL configurada en argocd-cm: ${ARGOCD_EXTERNAL_URL}"
-echo "  -> Ingress local (opcional en WSL): http://localhost"
+echo "  -> Ingress local (HTTP del nodo Kind -> host): http://127.0.0.1:${INGRESS_HOST_HTTP_PORT}"
 if [ "${ARGOCD_USE_PUBLIC_HOST}" = "true" ] && [ -n "${ARGOCD_PUBLIC_HOST:-}" ]; then
     echo "  -> Modo público activo (ARGOCD_USE_PUBLIC_HOST=true): http://${ARGOCD_PUBLIC_HOST}"
 else

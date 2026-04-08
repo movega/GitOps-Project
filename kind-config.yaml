@@ -8,10 +8,11 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+    # Puertos altos en el host: en WSL/Docker a veces falla el bind a 80/443.
     extraPortMappings:
       - containerPort: 80
-        hostPort: 80
+        hostPort: 9080
         protocol: TCP
       - containerPort: 443
-        hostPort: 443
+        hostPort: 9443
         protocol: TCP
