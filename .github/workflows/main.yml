@@ -41,6 +41,11 @@ jobs:
       run: npm run build
       working-directory: app
 
+    - name: Lint Dockerfile
+      uses: hadolint/hadolint-action@v3.3.0
+      with:
+        dockerfile: Dockerfile
+
     - name: Build Docker image
       run: docker build -t gitops-project:ci .
 
@@ -53,6 +58,20 @@ jobs:
         kustomize build k8s/overlays/dev > /dev/null
         kustomize build k8s/overlays/test > /dev/null
         kustomize build k8s/overlays/prod > /dev/null
+
+    - name: Install kubeconform
+      run: |
+        mkdir -p "$HOME/.local/bin"
+        curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+          | tar -xz -C "$HOME/.local/bin" kubeconform
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Validate Kubernetes schemas
+      run: |
+        kustomize build k8s/base | kubeconform -strict -summary
+        kustomize build k8s/overlays/dev | kubeconform -strict -summary
+        kustomize build k8s/overlays/test | kubeconform -strict -summary
+        kustomize build k8s/overlays/prod | kubeconform -strict -summary
 
   publish-image:
     runs-on: ubuntu-latest
