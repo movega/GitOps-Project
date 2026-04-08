@@ -1,8 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { SectionContainer } from '../components/SectionContainer';
+import { usePortfolioStore } from '@/store/usePortfolioStore';
 
 export const Hero = () => {
+  const hero = usePortfolioStore((state) => state.hero);
+
   return (
     <SectionContainer index=".01" id="hero">
       <div className="h-full flex flex-col justify-between min-h-[70vh]">
@@ -28,14 +31,14 @@ export const Hero = () => {
                 className="relative z-10"
             >
                 <span className="text-[10px] uppercase tracking-[0.2em] text-secondary mb-2 block">Project</span>
-                <h1 className="text-8xl md:text-9xl font-black tracking-tighter text-white mb-4 drop-shadow-2xl">
-                    TURA
+                <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-white mb-4 drop-shadow-2xl">
+                    {hero.title}
                 </h1>
                 <p className="text-xs md:text-sm uppercase tracking-[0.3em] text-secondary">
-                    A Junior Web-Designer
+                    {hero.subtitle}
                 </p>
                 <div className="w-full h-[1px] bg-white/20 mt-8 max-w-[200px] mx-auto"></div>
-                <span className="text-[10px] text-white/40 mt-2 block">since 2018</span>
+                <span className="text-[10px] text-white/40 mt-2 block">building modern platforms</span>
             </motion.div>
             
             {/* Background decorative glow */}
