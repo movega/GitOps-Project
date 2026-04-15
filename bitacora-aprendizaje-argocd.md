@@ -235,3 +235,79 @@ Volvi a un flujo mas robusto para este entorno:
 - En navegador Mac: `http://127.0.0.1:8081`
 
 Con este enfoque mantengo un unico origen de acceso y reduzco mucho los problemas de sesion/login.
+
+## Nueva iteracion: navegador que falla aunque `curl` en WSL funcione
+
+### Problema real que encontre
+
+Tras `bash startup.sh`, `curl` dentro de WSL respondia `HTTP 200` en `8080` y `8081`, pero en el navegador aparecia conexion fallida o no cargaba como esperaba.
+
+### Diagnostico que aprendi
+
+- Los `kubectl port-forward` estaban ligados solo a `127.0.0.1` en Linux (WSL). Eso es correcto para `curl` en la misma VM, pero el navegador puede estar en otro contexto (Windows host, Mac por VPN) donde `localhost` no es el mismo socket.
+- El acceso estable desde otro equipo no puede depender de adivinar `localhost` entre capas sin un tunel explicito o un bind escuchando donde el cliente realmente llega.
+
+### Solucion aplicada en el proyecto
+
+1. Parametrice el bind de `port-forward` con `PORT_FORWARD_ADDRESS` (por defecto `0.0.0.0`).
+2. Actualice `README.md` y la guia con el flujo Mac + VPN + tunel SSH a `8080` y `8081`, y troubleshooting por saltos (WSL -> host -> Mac).
+3. Ajuste `shutdown.sh` para matar forwards por `svc/argocd-server` y `svc/gitops-project` en lugar de patrones antiguos que no coincidian.
+
+### Leccion importante
+
+Separar siempre la prueba `curl` en WSL de la prueba de navegador en el host o en el Mac; si falla solo un salto, el problema es de red/forwarding, no de ArgoCD ni de la app.
+
+## Nueva iteracion: tunel SSH en Mac y puertos `Address already in use`
+
+### Problema que encontre
+
+Al ejecutar:
+
+```bash
+ssh -N -L 8080:127.0.0.1:8080 -L 8081:127.0.0.1:8081 usuario@host
+```
+
+SSH respondia:
+
+- `bind [127.0.0.1]:8080: Address already in use`
+- `channel_setup_fwd_listener_tcpip: cannot listen to port: 8080`
+
+Lo mismo ocurrio al probar puertos alternativos como `18080`/`18081` cuando tambien estaban ocupados.
+
+### Diagnostico
+
+En Mac, `lsof` mostro que **Cursor** (`Cursor`, PID concreto) escuchaba en `127.0.0.1:8080` y `127.0.0.1:8081`. Eso encaja con el reenvio automatico de puertos del IDE remoto: no es el servidor remoto quien bloquea, es el **cliente local** que ya reservo esos puertos.
+
+### Opciones que funcionan
+
+1. **Usar el forward que ya expone Cursor** y abrir directamente `http://127.0.0.1:8080` y `http://127.0.0.1:8081` en el Mac (sin segundo `ssh -L` si ya estan mapeados).
+2. **Liberar puertos en Mac** cerrando el forward en el panel Ports de Cursor o finalizando el proceso que escucha.
+3. **Elegir otros puertos locales libres** en el tunel SSH, por ejemplo `38080` y `38081`, y abrir esas URLs en el navegador.
+
+### Leccion importante
+
+El error `bind ... Address already in use` en el **laptop local** del tunel SSH significa conflicto de puertos en esa maquina, no en el servidor remoto.
+
+## Nueva iteracion: web app con fondo azul y badge "TRAE SOLO"
+
+### Problema que encontre
+
+En la web app solo se veia un fondo azul y aparecia un badge con texto tipo "TRAE SOLO" y enlace externo.
+
+### Diagnostico
+
+- Ese elemento **no** venia de componentes React en `app/src`.
+- En el **build de produccion** (`dist/index.html`), `vite-plugin-trae-solo-badge` inyectaba un script (`TraeBadgePlugin`) que crea el badge fijo en la esquina.
+- El `README.md` y la guia ya hablaban de `http` para ArgoCD; mezclar con `https` en documentacion antigua podia confundir, pero el badge era independiente del esquema.
+
+### Solucion aplicada en el codigo
+
+- Se elimino el uso del plugin `vite-plugin-trae-solo-badge` en `app/vite.config.ts` para que los proximos builds no incluyan ese script.
+
+### Para que el cambio se vea en el cluster
+
+Hace falta **rebuild de la imagen** (Dockerfile hace `npm run build`) y **redeploy** via GitOps (push a la rama `dev` y sync de ArgoCD), o `kubectl rollout restart` solo reinstancia el mismo artefacto si la imagen no cambio.
+
+### Leccion importante
+
+Los artefactos servidos por nginx son estaticos; quitar el plugin en el repo no actualiza el pod hasta que se construya y despliegue una imagen nueva.
