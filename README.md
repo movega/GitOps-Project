@@ -1,11 +1,11 @@
 # GitOps-Project
 
-## Acceso principal a ArgoCD (recomendado)
+## Acceso principal (WSL/host)
 
-El camino principal del proyecto vuelve a ser `port-forward` para mantener una URL estable y evitar problemas de red LAN:
+El camino principal del proyecto usa `port-forward` para mantener URLs estables:
 
 - ArgoCD UI: `http://127.0.0.1:8081`
-- App dev: `http://localhost:8080`
+- App dev: `http://127.0.0.1:8080`
 
 Ejecuta:
 
@@ -15,23 +15,27 @@ bash startup.sh
 
 El script deja:
 
-- `kubectl port-forward` de `argocd-server` en `8081`.
-- `kubectl port-forward` de `gitops-project` (dev) en `8080`.
+- `kubectl port-forward` de `argocd-server` en `8081` (bind configurable con `PORT_FORWARD_ADDRESS`, por defecto `0.0.0.0`).
+- `kubectl port-forward` de `gitops-project` (dev) en `8080` (mismo bind).
 - `argocd-cm.data.url` alineada con la URL de acceso principal.
 
-## Acceso desde Mac (sin depender de LAN)
+## Acceso desde Mac por VPN (recomendado)
 
-Si usas Mac, crea un túnel SSH hacia el host donde corre `kubectl` (WSL o la máquina que lo ejecuta):
+Si quieres entrar desde tu Mac conectado por VPN al host, usa túnel SSH para mantener en Mac `localhost:8080` y `localhost:8081`:
 
 ```bash
-ssh -N -L 8081:127.0.0.1:8081 usuario@<host-donde-corre-kubectl>
+ssh -N \
+  -L 8080:127.0.0.1:8080 \
+  -L 8081:127.0.0.1:8081 \
+  usuario@<host-vpn>
 ```
 
 Luego abre en el Mac:
 
+- `http://127.0.0.1:8080` (web app)
 - `http://127.0.0.1:8081`
 
-Este flujo evita bloqueos típicos de redes de aula (aislamiento entre clientes, reglas de firewall externas, etc.).
+Este flujo evita depender de rutas LAN directas hacia WSL.
 
 ## Ingress y acceso por IP LAN (opcional)
 
@@ -71,3 +75,19 @@ Logs de `port-forward` (por si vuelve a salir `ERR_EMPTY_RESPONSE`):
 ```bash
 tail -f /tmp/port-forward-argocd-server-8081.log
 ```
+
+## Troubleshooting por saltos de red
+
+Si no abre en navegador, valida en este orden:
+
+1. Dentro de WSL:
+   - `curl -I http://127.0.0.1:8080`
+   - `curl -I http://127.0.0.1:8081`
+2. En el host (Windows/Linux que ejecuta WSL):
+   - `curl -I http://127.0.0.1:8080`
+   - `curl -I http://127.0.0.1:8081`
+3. En el Mac (con túnel SSH abierto):
+   - `curl -I http://127.0.0.1:8080`
+   - `curl -I http://127.0.0.1:8081`
+
+Si falla un nivel y el anterior no, el problema está en ese salto de red (no en ArgoCD ni en la app).

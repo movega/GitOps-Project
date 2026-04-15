@@ -10,6 +10,7 @@ INGRESS_NGINX_MANIFEST="https://raw.githubusercontent.com/kubernetes/ingress-ngi
 ARGOCD_INGRESS_MANIFEST="$(dirname "$0")/k8s/argocd-ingress.yaml"
 ARGOCD_UI_PORT="${ARGOCD_UI_PORT:-8081}"
 DEV_APP_PORT="${DEV_APP_PORT:-8080}"
+PORT_FORWARD_ADDRESS="${PORT_FORWARD_ADDRESS:-0.0.0.0}"
 ARGOCD_USE_PUBLIC_HOST="${ARGOCD_USE_PUBLIC_HOST:-false}"
 PORT_FORWARD_LOG_DIR="${PORT_FORWARD_LOG_DIR:-/tmp}"
 
@@ -38,7 +39,7 @@ start_port_forward_with_restart() {
     local log_file="${PORT_FORWARD_LOG_DIR}/port-forward-${service_name}-${local_port}.log"
 
     pkill -f "kubectl port-forward.*svc/${service_name}.*${local_port}:${target_port}" || true
-    nohup bash -c "while true; do kubectl port-forward svc/${service_name} -n ${namespace} ${local_port}:${target_port} --address 127.0.0.1; sleep 2; done" >"${log_file}" 2>&1 &
+    nohup bash -c "while true; do kubectl port-forward svc/${service_name} -n ${namespace} ${local_port}:${target_port} --address ${PORT_FORWARD_ADDRESS}; sleep 2; done" >"${log_file}" 2>&1 &
 }
 
 # 1. Gestión del Clúster
@@ -50,11 +51,11 @@ else
     # Intentar arrancar si está detenido (Docker)
     docker start "${CLUSTER_NAME}-control-plane" 2>/dev/null || true
 
-    # Verificar que el clúster tenga mapeos estables para Ingress (host 80/443)
+    # Verificar que el nodo publique HTTP/HTTPS del ingress (cualquier hostPort válido)
     MAPPED_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
     MAPPED_HTTPS_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 443/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
-    if [ "$MAPPED_HTTP_PORT" != "80" ] || [ "$MAPPED_HTTPS_PORT" != "443" ]; then
-        echo "♻️ El clúster actual no tiene mapeo estable en 80/443. Recreando..."
+    if [ -z "${MAPPED_HTTP_PORT:-}" ] || [ -z "${MAPPED_HTTPS_PORT:-}" ]; then
+        echo "♻️ El clúster actual no expone puertos del ingress (80/443 en el nodo). Recreando..."
         kind delete cluster --name "$CLUSTER_NAME"
         create_kind_cluster
     fi
@@ -62,6 +63,9 @@ fi
 
 echo "⏳ Esperando estabilidad del nodo..."
 kubectl wait --for=condition=Ready node/${CLUSTER_NAME}-control-plane --timeout=60s
+
+INGRESS_HOST_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
+INGRESS_HOST_HTTP_PORT="${INGRESS_HOST_HTTP_PORT:-9080}"
 
 # 2. Namespaces
 echo "Create namespaces..."
@@ -160,9 +164,10 @@ echo "bridge: Configurando accesos..."
 
 # ArgoCD queda disponible por port-forward para un origen estable de sesión
 start_port_forward_with_restart "argocd-server" "argocd" "${ARGOCD_UI_PORT}" "80"
-echo "  -> ArgoCD UI (recomendado): http://127.0.0.1:${ARGOCD_UI_PORT}"
+echo "  -> ArgoCD UI (WSL/host): http://127.0.0.1:${ARGOCD_UI_PORT}"
+echo "  -> Port-forward bind address: ${PORT_FORWARD_ADDRESS}"
 echo "  -> ArgoCD URL configurada en argocd-cm: ${ARGOCD_EXTERNAL_URL}"
-echo "  -> Ingress local (opcional en WSL): http://localhost"
+echo "  -> Ingress local (HTTP del nodo Kind -> host): http://127.0.0.1:${INGRESS_HOST_HTTP_PORT}"
 if [ "${ARGOCD_USE_PUBLIC_HOST}" = "true" ] && [ -n "${ARGOCD_PUBLIC_HOST:-}" ]; then
     echo "  -> Modo público activo (ARGOCD_USE_PUBLIC_HOST=true): http://${ARGOCD_PUBLIC_HOST}"
 else
@@ -174,7 +179,10 @@ echo "⏳ Esperando despliegue de la app (dev)..."
 kubectl wait --for=condition=available --timeout=300s deployment/gitops-project -n dev || echo "⚠️ La app aún no está lista, intentando port-forward de todos modos..."
 
 start_port_forward_with_restart "gitops-project" "dev" "${DEV_APP_PORT}" "80"
-echo "  -> App (Dev): http://localhost:${DEV_APP_PORT}"
+echo "  -> App (Dev, WSL/host): http://127.0.0.1:${DEV_APP_PORT}"
+echo "  -> Mac por VPN (tunel SSH recomendado):"
+echo "     ssh -N -L ${DEV_APP_PORT}:127.0.0.1:${DEV_APP_PORT} -L ${ARGOCD_UI_PORT}:127.0.0.1:${ARGOCD_UI_PORT} <usuario>@<host-vpn>"
+echo "  -> Tras abrir el tunel en Mac: http://localhost:${DEV_APP_PORT} y http://localhost:${ARGOCD_UI_PORT}"
 echo "  -> Logs port-forward: ${PORT_FORWARD_LOG_DIR}/port-forward-argocd-server-${ARGOCD_UI_PORT}.log"
 
 echo "✨ Entorno listo."

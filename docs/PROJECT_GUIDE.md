@@ -129,8 +129,13 @@ What it does:
 - applies local ArgoCD resource patch
 - creates/updates ArgoCD Applications for all environments
 - opens local tunnels:
-  - ArgoCD UI: `https://localhost:8081`
-  - Dev app: `http://localhost:8080`
+  - ArgoCD UI: `http://127.0.0.1:8081`
+  - Dev app: `http://127.0.0.1:8080`
+
+Notes:
+
+- `startup.sh` uses `PORT_FORWARD_ADDRESS` (default `0.0.0.0`) for `kubectl port-forward`.
+- Ingress access is separate from port-forward and normally appears as `http://127.0.0.1:9080` (or the mapped host port shown by the script).
 
 To stop:
 
@@ -157,13 +162,17 @@ If startup succeeds but app is not ready:
 
 1. Verify Docker daemon is running.
 2. Ensure ports `8080` and `8081` are free.
-3. Check ArgoCD namespace pods:
+3. Validate per network hop:
+   - inside WSL: `curl -I http://127.0.0.1:8080` and `curl -I http://127.0.0.1:8081`
+   - on host: `curl -I http://127.0.0.1:8080` and `curl -I http://127.0.0.1:8081`
+   - on Mac (VPN + SSH tunnel): `curl -I http://127.0.0.1:8080` and `curl -I http://127.0.0.1:8081`
+4. Check ArgoCD namespace pods:
    - `kubectl get pods -n argocd`
-4. Check app namespace pods:
+5. Check app namespace pods:
    - `kubectl get pods -n dev`
-5. Inspect deployment events:
+6. Inspect deployment events:
    - `kubectl describe deployment gitops-project -n dev`
-6. Confirm branch-to-tag consistency:
+7. Confirm branch-to-tag consistency:
    - `dev` uses `dev-latest`
    - `test` uses `test-latest`
    - `main` uses `latest`
@@ -174,6 +183,6 @@ If startup succeeds but app is not ready:
 2. Run frontend locally (`cd app && npm ci && npm run dev`).
 3. Run quality checks (`lint`, `check`, `test`, `build`).
 4. Bootstrap GitOps stack (`./startup.sh`).
-5. Log into ArgoCD at `https://localhost:8081`.
+5. Log into ArgoCD at `http://127.0.0.1:8081`.
 6. Verify app health in namespace `dev`.
 7. Work in `dev` and promote via PR to `test`, then `main`.
