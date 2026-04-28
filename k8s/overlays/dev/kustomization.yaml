@@ -1,25 +1,25 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base
+- ../../base
 namespace: dev
 images:
-  - name: gitops-project
-    newName: alvarovm95493/gitops-project
-    newTag: dev-latest
+- name: gitops-project
+  newName: alvarovm95493/gitops-project
+  newTag: dev-a01c5c2
 patches:
-  - target:
-      kind: Deployment
-      name: gitops-project
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 1
-      - op: add
-        path: /spec/template/spec/containers/0/env
-        value:
-          - name: APP_ENV
-            value: "ENTORNO DE DESARROLLO (RAMA DEV)"
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 1
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+        - name: APP_ENV
+          value: "ENTORNO DE DESARROLLO (RAMA DEV)"
+    - op: replace
+      path: /spec/template/spec/containers/0/imagePullPolicy
+      value: IfNotPresent
+  target:
+    kind: Deployment
+    name: gitops-project
