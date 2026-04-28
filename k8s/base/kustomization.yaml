@@ -7,5 +7,6 @@ resources:
 images:
   - name: gitops-project
     newName: alvarovm95493/gitops-project
+    newTag: latest
     # En desarrollo local, esto permite sobrescribir fácilmente.
     # ArgoCD detectará cambios si actualizas el tag aquí o en los overlays.

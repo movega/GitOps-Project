@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: GitOps-Project API Spec
+  description: Contrato para el portfolio SPA (React + TS). Define la estructura de datos para Hero, Projects y Contact.
+  version: 1.1.0
+
+paths:
+  /content/portfolio:
+    get:
+      summary: Obtener todo el contenido del portfolio
+      description: Centraliza los datos para las secciones Hero y Projects para reducir latencia.
+      responses:
+        '200':
+          description: Datos cargados para Zustand
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioContent'
+
+  /contact/send:
+    post:
+      summary: Enviar mensaje de contacto
+      description: Endpoint para dar funcionalidad real a la sección de Contacto.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+      responses:
+        '202':
+          description: Mensaje recibido correctamente.
+
+components:
+  schemas:
+    PortfolioContent:
+      type: object
+      properties:
+        hero:
+          $ref: '#/components/schemas/HeroData'
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectItem'
+
+    HeroData:
+      type: object
+      properties:
+        title: { type: string, example: "Senior Frontend Engineer" }
+        subtitle: { type: string, example: "Especialista en GitOps y Kubernetes" }
+
+    ProjectItem:
+      type: object
+      required: [id, title, techStack]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        techStack: 
+          type: array
+          items: { type: string }
+          example: ["React", "Tailwind CSS", "Framer Motion"]
+        imageUrl: { type: string, format: uri }
+        repoUrl: { type: string, format: uri }
+        liveUrl: { type: string, format: uri }
+
+    ContactRequest:
+      type: object
+      required: [email, message]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        message: { type: string }

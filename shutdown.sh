@@ -3,7 +3,8 @@ echo "🛑 Stopping GitOps Environment..."
 
 # 1. Matar los túneles de puerto para liberar la terminal
 echo "🔗 Closing tunnels..."
-pkill -f "port-forward"
+pkill -f "kubectl port-forward.*svc/argocd-server" || true
+pkill -f "kubectl port-forward.*svc/gitops-project" || true
 
 # 2. Detener el contenedor de Docker de Kind (sin borrarlo)
 echo "🐳 Pausing Kind cluster nodes..."

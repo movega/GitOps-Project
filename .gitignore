@@ -1,0 +1,6 @@
+.DS_Store
+.cursor/
+app/node_modules/
+app/dist/
+app/node_modules/.vite-temp/
+*.tsbuildinfo
