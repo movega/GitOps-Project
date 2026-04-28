@@ -6,5 +6,10 @@ export default defineConfig({
   build: {
     sourcemap: 'hidden',
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+  },
   plugins: [react()],
 })

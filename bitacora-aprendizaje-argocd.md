@@ -311,3 +311,39 @@ Hace falta **rebuild de la imagen** (Dockerfile hace `npm run build`) y **redepl
 ### Leccion importante
 
 Los artefactos servidos por nginx son estaticos; quitar el plugin en el repo no actualiza el pod hasta que se construya y despliegue una imagen nueva.
+
+## Nueva iteracion: fallo de CI por tests tras simplificar frontend
+
+### Problema que encontre
+
+Despues de dejar el frontend en una pagina minima con `Hola Mundo`, el pipeline en GitHub fallaba en el paso de tests.
+
+### Diagnostico
+
+- El workflow [`/.github/workflows/main.yml`](.github/workflows/main.yml) seguia ejecutando `npm run test -- --run`.
+- En [`app/package.json`](app/package.json) ya no existia script `test` tras la limpieza.
+- Tampoco habia archivos `*.test.*` en `app/src`, porque los tests antiguos pertenecian a componentes eliminados.
+- Al restaurar test tooling inicialmente, aparecio un error de Vitest por incompatibilidad ESM de `jsdom` resuelto en ese momento.
+
+### Solucion aplicada
+
+1. Restaure setup minimo de testing en frontend:
+   - Script `test` en `app/package.json`.
+   - Dependencias: `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`.
+2. Configure Vitest en `app/vite.config.ts` (`environment`, `setupFiles`, `include`).
+3. Cree `app/src/test/setup.ts` con `@testing-library/jest-dom/vitest`.
+4. Cree un test alineado al nuevo frontend (`app/src/App.test.tsx`) que valida el render de `Hola Mundo`.
+5. Fije `jsdom` a `26.1.0` para evitar el error ESM visto con la version previamente resuelta en este entorno.
+
+### Verificacion final
+
+En `app/` quedaron pasando los mismos comandos del CI:
+
+- `npm run lint`
+- `npm run check`
+- `npm run test -- --run`
+- `npm run build`
+
+### Leccion importante
+
+Cuando se simplifica una app, hay que simplificar tambien su capa de pruebas: no mantener tests de modulos eliminados, pero tampoco dejar el pipeline sin el script/comprobacion que el workflow espera ejecutar.
