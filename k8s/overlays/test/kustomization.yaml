@@ -1,22 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base
+- ../../base
 namespace: test
 images:
-  - name: gitops-project
-    newName: alvarovm95493/gitops-project
-    newTag: test-latest
+- name: gitops-project
+  newName: alvarovm95493/gitops-project
+  newTag: test-317174e
 patches:
-  - target:
-      kind: Deployment
-      name: gitops-project
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 2
-      - op: add
-        path: /spec/template/spec/containers/0/env
-        value:
-          - name: APP_ENV
-            value: "ENTORNO DE PRUEBAS (RAMA TEST)"
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 2
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+        - name: APP_ENV
+          value: "ENTORNO DE PRUEBAS (RAMA TEST)"
+  target:
+    kind: Deployment
+    name: gitops-project
