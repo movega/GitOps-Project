@@ -61,8 +61,39 @@ else
     fi
 fi
 
+wait_for_api_server() {
+    local max_attempts="$1"
+    for i in $(seq 1 "$max_attempts"); do
+        if kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+            echo "✅ API server listo."
+            return 0
+        fi
+        echo "  Intento $i/$max_attempts: API server no disponible aún, esperando 5s..."
+        sleep 5
+    done
+    return 1
+}
+
+echo "⏳ Esperando que el API server esté disponible..."
+if ! wait_for_api_server 24; then
+    echo "⚠️  API server no responde tras 120s. Intentando recuperación del clúster..."
+    # El docker pause/start puede dejar containerd con sandboxes obsoletos.
+    # Reiniciar containerd y kubelet limpia el estado corrupto.
+    docker exec "${CLUSTER_NAME}-control-plane" systemctl restart containerd 2>/dev/null || true
+    sleep 15
+    docker exec "${CLUSTER_NAME}-control-plane" systemctl restart kubelet 2>/dev/null || true
+    echo "⏳ Esperando recuperación tras reinicio de servicios internos (90s)..."
+    sleep 90
+    if ! wait_for_api_server 24; then
+        echo "❌ Recuperación fallida. Recreando el clúster..."
+        kind delete cluster --name "$CLUSTER_NAME"
+        create_kind_cluster
+        wait_for_api_server 36 || { echo "❌ El clúster nuevo tampoco responde. Abortando."; exit 1; }
+    fi
+fi
+
 echo "⏳ Esperando estabilidad del nodo..."
-kubectl wait --for=condition=Ready node/${CLUSTER_NAME}-control-plane --timeout=60s
+kubectl wait --for=condition=Ready node/${CLUSTER_NAME}-control-plane --timeout=120s
 
 INGRESS_HOST_HTTP_PORT=$(docker port "${CLUSTER_NAME}-control-plane" 80/tcp 2>/dev/null | awk -F: 'NR==1 {print $NF}')
 INGRESS_HOST_HTTP_PORT="${INGRESS_HOST_HTTP_PORT:-9080}"
@@ -148,6 +179,20 @@ spec:
       - CreateNamespace=true
 EOF
 done
+
+# 6.1 Cargar imagen local en Kind si existe (evita dependencia de Docker Hub para dev)
+# Se cargan tanto dev-latest como latest para cubrir ambas posibles referencias del kustomization.
+LOCAL_DEV_IMAGE="${DOCKER_USER}/gitops-project:dev-latest"
+if docker image inspect "$LOCAL_DEV_IMAGE" >/dev/null 2>&1; then
+    echo "📦 Cargando imagen local '$LOCAL_DEV_IMAGE' en el clúster Kind..."
+    kind load docker-image "$LOCAL_DEV_IMAGE" --name "$CLUSTER_NAME"
+    # También etiquetar y cargar como :latest por si el overlay del repo usa ese tag.
+    docker tag "$LOCAL_DEV_IMAGE" "${DOCKER_USER}/gitops-project:latest" 2>/dev/null || true
+    kind load docker-image "${DOCKER_USER}/gitops-project:latest" --name "$CLUSTER_NAME" 2>/dev/null || true
+    echo "✅ Imagen cargada."
+else
+    echo "ℹ️  Imagen local '$LOCAL_DEV_IMAGE' no encontrada. ArgoCD intentará pullarla de Docker Hub."
+fi
 
 # Dar margen a ArgoCD para comenzar la reconciliación inicial.
 sleep 30
