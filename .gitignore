@@ -2,5 +2,6 @@
 .cursor/
 app/node_modules/
 app/dist/
+dist/
 app/node_modules/.vite-temp/
 *.tsbuildinfo
