@@ -1,7 +1,7 @@
 function App() {
   return (
     <main className="flex min-h-screen items-center justify-center">
-      <h1 className="text-4xl font-semibold">Hola Alvaro</h1>
+      <h1 className="text-4xl font-semibold">Hola Mundo</h1>
     </main>
   );
 }
