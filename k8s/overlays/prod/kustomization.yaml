@@ -6,7 +6,7 @@ namespace: prod
 images:
 - name: gitops-project
   newName: alvarovm95493/gitops-project
-  newTag: prod-65b1baf
+  newTag: prod-e4533ce
 patches:
 - patch: |-
     - op: replace
