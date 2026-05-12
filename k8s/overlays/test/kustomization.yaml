@@ -6,7 +6,7 @@ namespace: test
 images:
 - name: gitops-project
   newName: alvarovm95493/gitops-project
-  newTag: test-317174e
+  newTag: test-8e1ee0d
 patches:
 - patch: |-
     - op: replace
