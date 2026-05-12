@@ -6,7 +6,7 @@ namespace: dev
 images:
 - name: gitops-project
   newName: alvarovm95493/gitops-project
-  newTag: dev-de264cb
+  newTag: dev-0c1b161
 patches:
 - patch: |-
     - op: replace
